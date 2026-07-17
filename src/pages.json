@@ -1,0 +1,252 @@
+{
+	"pages": [ //pages数组中第一项表示应用启动页，参考：https://uniapp.dcloud.io/collocation/pages
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "游玩推荐"
+			}
+		},
+		{
+			"path": "pages/car/list",
+			"style": {
+				"navigationBarTitleText": "租车预约"
+			}
+		},
+		{
+			"path": "pages/service/index",
+			"style": {
+				"navigationBarTitleText": "汽车服务"
+			}
+		},
+		{
+			"path": "pages/moment/index",
+			"style": {
+				"navigationBarTitleText": "旅记"
+			}
+		},
+		{
+			"path": "pages/order/list",
+			"style": {
+				"navigationBarTitleText": "我的订单"
+			}
+		},
+		{
+			"path": "pages/order/detail",
+			"style": {
+				"navigationBarTitleText": "租赁订单详情"
+			}
+		},
+		{
+			"path": "pages/order/payment",
+			"style": {
+				"navigationBarTitleText": "确认支付"
+			}
+		},
+		{
+			"path": "pages/order/service-detail",
+			"style": {
+				"navigationBarTitleText": "服务订单详情"
+			}
+		},
+		{
+			"path": "pages/order/service-reschedule",
+			"style": {
+				"navigationBarTitleText": "调整服务预约"
+			}
+		},
+		{
+			"path": "pages/order/service-payment",
+			"style": {
+				"navigationBarTitleText": "服务订单支付"
+			}
+		},
+		{
+			"path": "pages/order/signature",
+			"style": {
+				"navigationBarTitleText": "签名确认"
+			}
+		},
+		{
+			"path": "pages/order/dispute",
+			"style": {
+				"navigationBarTitleText": "提交结算争议"
+			}
+		},
+		{
+			"path": "pages/order/inspection-dispute",
+			"style": {
+				"navigationBarTitleText": "提交验车异议"
+			}
+		},
+		{
+			"path": "pages/order/review",
+			"style": {
+				"navigationBarTitleText": "订单评价"
+			}
+		},
+		{
+			"path": "pages/order/review-followup",
+			"style": {
+				"navigationBarTitleText": "补充评价"
+			}
+		},
+		{
+			"path": "pages/profile/index",
+			"style": {
+				"navigationBarTitleText": "我的"
+			}
+		},
+		{
+			"path": "pages/profile/edit",
+			"style": {
+				"navigationBarTitleText": "完善个人资料"
+			}
+		},
+		{
+			"path": "pages/profile/certification",
+			"style": {
+				"navigationBarTitleText": "驾驶人认证"
+			}
+		},
+		{
+			"path": "pages/login/index",
+			"style": {
+				"navigationBarTitleText": "登录",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/profile/bind-mobile",
+			"style": {
+				"navigationBarTitleText": "绑定手机号"
+			}
+		},
+		{
+			"path": "pages/profile/favorites",
+			"style": {
+				"navigationBarTitleText": "我的收藏"
+			}
+		},
+		{
+			"path": "pages/profile/member",
+			"style": { "navigationBarTitleText": "会员中心" }
+		},
+		{
+			"path": "pages/profile/points",
+			"style": { "navigationBarTitleText": "积分明细" }
+		},
+		{
+			"path": "pages/profile/coupons",
+			"style": { "navigationBarTitleText": "我的优惠券" }
+		},
+		{
+			"path": "pages/profile/messages",
+			"style": { "navigationBarTitleText": "消息通知" }
+		},
+		{
+			"path": "pages/profile/feedback",
+			"style": { "navigationBarTitleText": "意见反馈" }
+		},
+		{
+			"path": "pages/employee/index",
+			"style": { "navigationBarTitleText": "员工工作台" }
+		},
+		{
+			"path": "pages/employee/rental-inspection",
+			"style": { "navigationBarTitleText": "车辆验车" }
+		},
+		{
+			"path": "pages/employee/service-perform",
+			"style": { "navigationBarTitleText": "服务履约" }
+		},
+		{
+			"path": "pages/employee/service-quote",
+			"style": { "navigationBarTitleText": "服务报价" }
+		},
+		{
+			"path": "pages/travel/submit",
+			"style": {
+				"navigationBarTitleText": "上传推荐"
+			}
+		},
+		{
+			"path": "pages/travel/list",
+			"style": {
+				"navigationBarTitleText": "吃喝玩推荐"
+			}
+		},
+		{
+			"path": "pages/travel/detail",
+			"style": {
+				"navigationBarTitleText": "推荐详情"
+			}
+		},
+		{
+			"path": "pages/travel/plan",
+			"style": {
+				"navigationBarTitleText": "行程规划"
+			}
+		},
+		{
+			"path": "pages/travel/itineraries",
+			"style": {
+				"navigationBarTitleText": "我的行程"
+			}
+		},
+		{
+			"path": "pages/travel/itinerary",
+			"style": {
+				"navigationBarTitleText": "行程详情"
+			}
+		},
+		{
+			"path": "pages/moment/photo-tool",
+			"style": {
+				"navigationBarTitleText": "照片处理"
+			}
+		},
+		{
+			"path": "pages/moment/drafts",
+			"style": {
+				"navigationBarTitleText": "旅记草稿箱"
+			}
+		},
+		{
+			"path": "pages/moment/mine",
+			"style": {
+				"navigationBarTitleText": "我的旅记"
+			}
+		},
+		{
+			"path": "pages/moment/publish",
+			"style": {
+				"navigationBarTitleText": "发布旅记"
+			}
+		},
+		{
+			"path": "pages/moment/comments",
+			"style": {
+				"navigationBarTitleText": "旅记评论"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "Hax租车",
+		"navigationBarBackgroundColor": "#FFFFFF",
+		"backgroundColor": "#F5F7FA"
+	},
+	"tabBar": {
+		"color": "#6B7280",
+		"selectedColor": "#1677FF",
+		"backgroundColor": "#FFFFFF",
+		"borderStyle": "white",
+		"list": [
+			{ "pagePath": "pages/index/index", "text": "游玩" },
+			{ "pagePath": "pages/car/list", "text": "租车" },
+			{ "pagePath": "pages/moment/index", "text": "旅记" },
+			{ "pagePath": "pages/service/index", "text": "服务" },
+			{ "pagePath": "pages/profile/index", "text": "我的" }
+		]
+	}
+}
