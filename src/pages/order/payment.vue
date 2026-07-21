@@ -13,12 +13,14 @@
         <text class="section-title">押金支付</text>
         <view class="fee-row"><text>已支付租金</text><text>¥{{ money(order.total_amount) }}</text></view>
         <view class="fee-row total"><text>本次支付押金</text><text>¥{{ money(order.deposit_amount) }}</text></view>
+        <view v-if="order.rental_access?.credit_deposit_available === false" class="deposit-access-note"><text>押金方式提示</text><text>{{ order.rental_access?.notice || '当前订单暂不支持信用免押，请完成普通押金支付。' }}</text></view>
       </view>
       <view v-else class="section">
         <text class="section-title">费用明细</text>
         <view class="fee-row"><text>基础租金</text><text>¥{{ money(order.base_amount) }}</text></view>
         <view v-if="Number(order.insurance_amount) > 0" class="fee-row"><text>车辆保障</text><text>¥{{ money(order.insurance_amount) }}</text></view>
-        <view v-if="serviceAmount > 0" class="fee-row"><text>取还车服务</text><text>¥{{ money(serviceAmount) }}</text></view>
+        <block v-if="bookingServices.length"><view v-for="service in bookingServices" :key="service.id || service.fee_code" class="fee-row"><text>{{ service.fee_name || service.name }}</text><text>¥{{ money(service.amount) }}</text></view></block>
+        <view v-else-if="serviceAmount > 0" class="fee-row"><text>取还车服务</text><text>¥{{ money(serviceAmount) }}</text></view>
         <view v-if="vipDiscount > 0" class="fee-row discount"><text>会员优惠</text><text>-¥{{ money(vipDiscount) }}</text></view>
         <view v-if="promotionDiscount > 0" class="fee-row discount"><text>活动优惠</text><text>-¥{{ money(promotionDiscount) }}</text></view>
         <view v-if="couponDiscount > 0" class="fee-row discount"><text>优惠券</text><text>-¥{{ money(couponDiscount) }}</text></view>
@@ -61,6 +63,7 @@ const snapshot = computed(() => {
 })
 const numberFrom = (names) => names.reduce((result, name) => result || Number(snapshot.value?.[name] || 0), 0)
 const serviceAmount = computed(() => numberFrom(['service_amount', 'delivery_fee', 'service_fee']))
+const bookingServices = computed(() => Array.isArray(snapshot.value?.booking_services) ? snapshot.value.booking_services : [])
 const vipDiscount = computed(() => numberFrom(['vip_discount_amount', 'member_discount_amount']))
 const promotionDiscount = computed(() => numberFrom(['promotion_discount_amount']))
 const couponDiscount = computed(() => numberFrom(['coupon_discount_amount']))
@@ -115,4 +118,5 @@ onLoad((options = {}) => {
 
 <style scoped>
 .page{min-height:100vh;padding:24rpx 32rpx calc(150rpx + env(safe-area-inset-bottom));box-sizing:border-box}.hero-card,.section,.deposit-card{margin-bottom:18rpx;padding:28rpx;border-radius:10rpx;background:#fff}.hero-card{background:linear-gradient(135deg,#eaf3ff,#f8fbff)}.hero-kicker,.hero-time,.hero-no,.bottom-label{display:block;color:#64748b;font-size:23rpx}.hero-title{display:block;margin:10rpx 0;color:#172033;font-size:34rpx;font-weight:700}.hero-time{font-size:24rpx}.hero-no{margin-top:12rpx;color:#94a3b8;font-size:21rpx}.section-title{display:block;margin-bottom:16rpx;color:#1f2937;font-size:29rpx;font-weight:700}.fee-row{display:flex;justify-content:space-between;gap:20rpx;padding:12rpx 0;color:#64748b;font-size:25rpx}.fee-row text:last-child{color:#374151}.fee-row.discount text:last-child{color:#0f8e69}.fee-row.total{margin-top:10rpx;padding-top:20rpx;border-top:1rpx solid #e9eef5;color:#1f2937;font-size:29rpx;font-weight:700}.fee-row.total text:last-child{color:#f97316}.deposit-card{display:flex;align-items:center;justify-content:space-between;gap:20rpx;background:#fffaf0}.deposit-title{display:block;color:#8a5a12;font-size:27rpx;font-weight:700}.deposit-note{display:block;margin-top:8rpx;color:#927344;font-size:21rpx;line-height:1.45}.deposit-value{color:#b96d00;font-size:30rpx;font-weight:700;white-space:nowrap}.notice{margin:24rpx 4rpx;color:#718096;font-size:22rpx;line-height:1.55}.detail-button,.list-button{border:1rpx solid #bcd7ff;background:#fff;color:#1677ff;font-size:25rpx}.bottom-safe{height:32rpx}.bottom-bar{position:fixed;right:0;bottom:0;left:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:24rpx;padding:20rpx 32rpx calc(20rpx + env(safe-area-inset-bottom));box-sizing:border-box;border-top:1rpx solid #e8edf4;background:#fff}.bottom-amount{display:block;margin-top:4rpx;color:#f97316;font-size:34rpx;font-weight:700}.pay-button{width:260rpx;margin:0;border-radius:8rpx;background:#1677ff;color:#fff;font-size:29rpx}.empty-state{padding:180rpx 24rpx;color:#94a3b8;text-align:center;font-size:26rpx}.list-button{width:300rpx;margin-top:30rpx}
+.deposit-access-note{display:flex;flex-direction:column;gap:8rpx;margin-top:18rpx;padding:16rpx;border-radius:6rpx;background:#eef6ff;color:#2563eb;font-size:22rpx;line-height:1.5}.deposit-access-note text:first-child{font-size:24rpx;font-weight:700}
 </style>

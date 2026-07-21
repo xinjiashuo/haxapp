@@ -21,7 +21,9 @@
         <view v-for="option in sortOptions" :key="option.key" class="sort-option" :class="{ active: sortKey === option.key }" @click="selectSort(option.key)">{{ option.name }}</view>
       </scroll-view>
 
-      <view v-if="currentItems.length" class="item-list">
+      <AppState v-if="loading" type="loading" title="推荐内容加载中" compact />
+      <AppState v-else-if="loadError" type="error" :description="loadError.msg" action-text="重新加载" compact @action="loadRecommendations" />
+      <view v-else-if="currentItems.length" class="item-list">
         <view v-for="item in currentItems" :key="item.id" class="recommendation-card" @click="openDetail(item)">
           <image v-if="item.cover_image" class="card-image" :src="item.cover_image" mode="aspectFill" />
           <view v-else class="card-image image-placeholder" :class="{ drink: activeTab === 'drink', play: activeTab === 'play' }">{{ activeTab === 'eat' ? '吃' : activeTab === 'drink' ? '喝' : '玩' }}</view>
@@ -35,7 +37,7 @@
           </view>
         </view>
       </view>
-      <view v-else class="empty-state">{{ emptyText }}</view>
+      <AppState v-else type="empty" :title="emptyText" description="门店会持续补充本地真实推荐" compact />
     </view>
     <AppBottomNav active="travel" />
   </view>
@@ -46,6 +48,7 @@ import { onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getTravelRecommendations } from '../../api/travel'
 import AppBottomNav from '../../components/AppBottomNav.vue'
+import AppState from '../../components/AppState.vue'
 import { distanceText, sortOptions, sortTravelItems } from '../../utils/travel-sort'
 
 const activeTab = ref('eat')
@@ -55,6 +58,8 @@ const spots = ref([])
 const categories = [{ key: 'eat', name: '吃' }, { key: 'drink', name: '喝' }, { key: 'play', name: '玩' }]
 const sortKey = ref('default')
 const userLocation = ref(null)
+const loading = ref(false)
+const loadError = ref(null)
 
 const rawItems = computed(() => ({ eat: foods.value, drink: drinks.value, play: spots.value })[activeTab.value] || [])
 const currentItems = computed(() => sortTravelItems(rawItems.value, activeTab.value, sortKey.value, userLocation.value))
@@ -62,6 +67,8 @@ const activeTitle = computed(() => ({ eat: '本地好吃的', drink: '适合坐�
 const emptyText = computed(() => ({ eat: '暂无餐饮推荐', drink: '暂无饮品推荐', play: '暂无景点推荐' })[activeTab.value])
 
 const loadRecommendations = async () => {
+  loading.value = true
+  loadError.value = null
   try {
     const result = await getTravelRecommendations(12)
     foods.value = result.data.foods || []
@@ -71,6 +78,9 @@ const loadRecommendations = async () => {
     foods.value = []
     drinks.value = []
     spots.value = []
+    loadError.value = error
+  } finally {
+    loading.value = false
   }
 }
 

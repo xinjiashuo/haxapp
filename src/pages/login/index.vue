@@ -44,7 +44,9 @@ const handleLogin = async () => {
     })
     saveSession(result.data)
     if (!result.data.user?.profile_completed) uni.setStorageSync('hax_profile_prompt_after_login', '1')
-    uni.reLaunch({ url: '/pages/profile/index' })
+    const redirect = uni.getStorageSync('hax_login_redirect') || '/pages/profile/index'
+    uni.removeStorageSync('hax_login_redirect')
+    uni.reLaunch({ url: redirect })
   } catch (error) {
     uni.showToast({ title: error.msg || '登录失败', icon: 'none' })
   } finally {
@@ -53,6 +55,7 @@ const handleLogin = async () => {
 }
 
 const goBack = () => {
+  uni.removeStorageSync('hax_login_redirect')
   uni.reLaunch({ url: '/pages/profile/index' })
 }
 </script>

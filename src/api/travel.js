@@ -26,6 +26,10 @@ export const reorderTravelItinerary = (id, data) => request({ url: `/travel-itin
 
 export const moveTravelItineraryStop = (id, data) => request({ url: `/travel-itineraries/${id}/move-stop`, method: 'POST', data })
 
+export const replaceTravelItineraryStop = (id, data) => request({ url: `/travel-itineraries/${id}/replace-stop`, method: 'POST', data })
+
+export const getTravelItineraryTargets = () => request({ url: '/travel-moments/targets', method: 'GET' })
+
 export const deleteTravelItinerary = (id) => request({ url: `/travel-itineraries/${id}/delete`, method: 'POST' })
 
 export const toggleTravelLike = (data) => request({ url: '/travel/like', method: 'POST', data })

@@ -14,6 +14,7 @@ export const submitMomentCheckin = (data) => request({ url: '/travel-moments/che
 export const publishMoment = (data) => request({ url: '/travel-moments/publish', method: 'POST', data })
 export const deleteMyMoment = (id) => request({ url: '/travel-moments/delete', method: 'POST', data: { id } })
 export const reportMomentContent = (data) => request({ url: '/travel-moments/report', method: 'POST', data })
+export const getMomentReports = () => request({ url: '/travel-moments/reports', method: 'GET' })
 export const getMomentComments = (id) => request({ url: `/travel-moments/comments/${id}`, method: 'GET' })
 export const publishMomentComment = (data) => request({ url: '/travel-moments/comment', method: 'POST', data })
 export const toggleMomentLike = (postId) => request({ url: '/travel-moments/like', method: 'POST', data: { post_id: postId } })

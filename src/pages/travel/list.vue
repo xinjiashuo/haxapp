@@ -4,7 +4,8 @@
     <scroll-view class="sort-bar" scroll-x>
       <view v-for="option in sortOptions" :key="option.key" class="sort-option" :class="{ active: sortKey === option.key }" @click="selectSort(option.key)">{{ option.name }}</view>
     </scroll-view>
-    <view v-if="loading" class="empty-state">推荐内容加载中</view>
+    <AppState v-if="loading" type="loading" title="推荐内容加载中" />
+    <AppState v-else-if="loadError" type="error" :description="loadError.msg" action-text="重新加载" @action="loadItems" />
     <view v-else-if="items.length" class="item-list">
       <view v-for="item in items" :key="`${item.target_type}-${item.target_id}`" class="recommendation-card" @click="openDetail(item)">
         <image v-if="item.cover_image" class="card-image" :src="item.cover_image" mode="aspectFill" />
@@ -20,7 +21,7 @@
         <view class="arrow-icon"></view>
       </view>
     </view>
-    <view v-else class="empty-state">暂无{{ pageTitle }}内容</view>
+    <AppState v-else type="empty" :title="`暂无${pageTitle}内容`" description="门店会持续补充本地真实推荐" />
     <AppBottomNav active="travel" />
   </view>
 </template>
@@ -29,6 +30,7 @@
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import AppBottomNav from '../../components/AppBottomNav.vue'
+import AppState from '../../components/AppState.vue'
 import { getTravelRecommendations } from '../../api/travel'
 import { distanceText, sortOptions, sortTravelItems } from '../../utils/travel-sort'
 
@@ -39,6 +41,7 @@ const spots = ref([])
 const sortKey = ref('default')
 const userLocation = ref(null)
 const loading = ref(false)
+const loadError = ref(null)
 const pageTitle = computed(() => ({ eat: '吃', drink: '喝', play: '玩' })[type.value] || '吃喝玩')
 const rawItems = computed(() => ({ eat: foods.value, drink: drinks.value, play: spots.value })[type.value] || [])
 const items = computed(() => sortTravelItems(rawItems.value, type.value, sortKey.value, userLocation.value))
@@ -49,16 +52,14 @@ const priceText = (item) => type.value === 'play'
 
 const loadItems = async () => {
   loading.value = true
+  loadError.value = null
   try {
     const result = await getTravelRecommendations(100)
     foods.value = result.data?.foods || []
     drinks.value = result.data?.drinks || []
     spots.value = result.data?.scenic_spots || []
   } catch (error) {
-    foods.value = []
-    drinks.value = []
-    spots.value = []
-    uni.showToast({ title: error.msg || '列表加载失败', icon: 'none' })
+    loadError.value = error
   } finally {
     loading.value = false
   }
@@ -104,5 +105,4 @@ onLoad((options) => {
 .reason { display: block; margin-top: 9rpx; overflow: hidden; color: #9ca3af; font-size: 21rpx; text-overflow: ellipsis; white-space: nowrap; }
 .interaction-meta { display: block; margin-top: auto; padding-top: 10rpx; color: #9ca3af; font-size: 20rpx; }
 .arrow-icon { position: absolute; top: 68rpx; right: 18rpx; width: 12rpx; height: 12rpx; border-top: 3rpx solid #cbd5e1; border-right: 3rpx solid #cbd5e1; transform: rotate(45deg); }
-.empty-state { padding: 140rpx 32rpx; color: #9ca3af; text-align: center; font-size: 25rpx; }
 </style>

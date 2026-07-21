@@ -11,6 +11,10 @@
       <input v-model="form.mileage" type="number" placeholder="请输入公里数" />
       <text class="label">油量/电量（%）</text>
       <input v-model="form.energy_level" type="digit" placeholder="例如 80" />
+      <view class="handover-checks">
+        <view class="check-item" :class="{ checked: form.has_license }" @click="form.has_license = !form.has_license"><text class="check-mark">{{ form.has_license ? '✓' : '' }}</text><text>行驶证已核对</text></view>
+        <view class="check-item" :class="{ checked: form.has_key }" @click="form.has_key = !form.has_key"><text class="check-mark">{{ form.has_key ? '✓' : '' }}</text><text>车辆钥匙已交接</text></view>
+      </view>
 
       <view class="section-head">
         <text class="section-title">必拍验车项</text>
@@ -35,9 +39,15 @@
       <text class="label">验车说明</text>
       <textarea v-model="form.remark" placeholder="记录车况、随车物品或异常情况" maxlength="1000" />
       <template v-if="type === 'return'">
-        <text class="label">需补收费用（可选）</text>
-        <input v-model="form.fee_name" placeholder="例如：车损修复费" />
-        <input v-model="form.fee_amount" type="digit" placeholder="费用金额" />
+        <view class="section-head fee-head"><text class="section-title">需补收费用（可选）</text><text class="add-fee" @click="addFee">添加费用</text></view>
+        <view v-for="(fee, index) in form.fees" :key="index" class="fee-card">
+          <picker class="fee-category-picker" :range="feeCategories" range-key="label" :value="fee.category_index" @change="selectFeeCategory(index, $event)"><view class="fee-category-value">{{ fee.category_label || '请选择费用分类' }}</view></picker>
+          <text v-if="fee.price_hint" class="fee-price-hint">收费规则：{{ fee.price_hint }}{{ fee.suggested_amount !== null ? `，已带入 ¥${fee.suggested_amount}` : '' }}</text>
+          <input v-model="fee.fee_name" placeholder="费用名称，可补充具体说明" />
+          <input v-model="fee.fee_amount" type="digit" placeholder="费用金额" />
+          <input v-model="fee.fee_remark" placeholder="费用说明（可选）" />
+          <text class="remove-fee" @click="removeFee(index)">删除本项</text>
+        </view>
       </template>
 
       <view class="section-head other-head">
@@ -64,7 +74,7 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { submitRentalInspection, uploadEmployeeMedia } from '../../api/employee'
+import { getEmployeeExtraFeeCategories, submitRentalInspection, uploadEmployeeMedia } from '../../api/employee'
 
 const requiredScenes = [
   { key: 'dashboard', label: '仪表盘', note: '里程、油量/电量清晰可见' },
@@ -84,7 +94,8 @@ const plate = ref('')
 const submitting = ref(false)
 const requiredMedia = reactive({})
 const otherMedia = ref([])
-const form = ref({ mileage: '', energy_level: '', remark: '', fee_name: '', fee_amount: '' })
+const feeCategories = ref([])
+const form = ref({ mileage: '', energy_level: '', remark: '', has_license: true, has_key: true, fees: [] })
 const inspectionMedia = computed(() => [
   ...requiredScenes.filter((item) => requiredMedia[item.key]).map((item) => requiredMedia[item.key]),
   ...otherMedia.value,
@@ -95,7 +106,36 @@ onLoad((query) => {
   type.value = query.type === 'return' ? 'return' : 'pickup'
   name.value = decodeURIComponent(query.name || '')
   plate.value = decodeURIComponent(query.plate || '')
+  if (type.value === 'return') loadFeeCategories()
 })
+
+const loadFeeCategories = async () => {
+  try {
+    const result = await getEmployeeExtraFeeCategories()
+    feeCategories.value = Array.isArray(result.data) ? result.data : []
+  } catch (error) {
+    uni.showToast({ title: error.msg || '费用分类读取失败', icon: 'none' })
+  }
+}
+
+const selectFeeCategory = (feeIndex, event) => {
+  const index = Number(event.detail.value)
+  const category = feeCategories.value[index]
+  const fee = form.value.fees[feeIndex]
+  if (!fee) return
+  fee.category_index = index
+  fee.fee_category_id = category?.id || ''
+  fee.category_label = category?.label || ''
+  fee.price_hint = category?.price_hint || ''
+  fee.suggested_amount = category?.suggested_amount ?? null
+  if (category?.suggested_amount !== null && category?.suggested_amount !== undefined) fee.fee_amount = category.suggested_amount
+}
+
+const addFee = () => {
+  if (form.value.fees.length >= 5) return uni.showToast({ title: '一次最多添加5项费用', icon: 'none' })
+  form.value.fees.push({ fee_category_id: '', fee_name: '', fee_amount: '', fee_remark: '', category_index: -1, category_label: '', price_hint: '', suggested_amount: null })
+}
+const removeFee = (index) => form.value.fees.splice(index, 1)
 
 const uploadFiles = async (files, scene) => {
   uni.showLoading({ title: '上传中', mask: true })
@@ -122,7 +162,7 @@ const chooseRequired = (item) => {
   uni.chooseImage({
     count: 1,
     sizeType: ['compressed'],
-    sourceType: ['camera', 'album'],
+    sourceType: ['camera'],
     success: async ({ tempFilePaths }) => {
       const uploaded = await uploadFiles(tempFilePaths.map((tempFilePath) => ({ tempFilePath, fileType: 'image' })), item.key)
       if (uploaded[0]) requiredMedia[item.key] = uploaded[0]
@@ -150,13 +190,17 @@ const submit = async () => {
   if (form.value.energy_level === '') return uni.showToast({ title: '请填写当前油量或电量', icon: 'none' })
   const missing = requiredScenes.find((item) => !requiredMedia[item.key])
   if (missing) return uni.showToast({ title: `请拍摄${missing.label}`, icon: 'none' })
+  if (type.value === 'return') {
+    const invalidFee = form.value.fees.find((fee) => !fee.fee_category_id || !fee.fee_amount)
+    if (invalidFee) return uni.showToast({ title: '请补全费用分类和金额', icon: 'none' })
+  }
   submitting.value = true
   try {
     await submitRentalInspection(id.value, {
       inspection_type: type.value,
       ...form.value,
-      has_license: 1,
-      has_key: 1,
+      has_license: form.value.has_license ? 1 : 0,
+      has_key: form.value.has_key ? 1 : 0,
       media: inspectionMedia.value,
     })
     uni.showToast({ title: type.value === 'pickup' ? '已提交，等待用户确认' : '已提交还车验车，等待用户确认', icon: 'success' })
@@ -180,7 +224,16 @@ const submit = async () => {
 .required-text { color: #e8594f; font-size: 22rpx; }
 .optional-text { color: #94a3b8; font-size: 22rpx; }
 .label { display: block; margin-top: 24rpx; color: #374151; font-size: 25rpx; font-weight: 600; }
+.handover-checks { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 18rpx; }
+.check-item { display: flex; align-items: center; gap: 8rpx; color: #64748b; font-size: 23rpx; }
+.check-mark { display: flex; align-items: center; justify-content: center; width: 28rpx; height: 28rpx; border: 1rpx solid #94a3b8; border-radius: 50%; color: #fff; font-size: 20rpx; }
+.check-item.checked { color: #0f8e69; }.check-item.checked .check-mark { border-color: #0f8e69; background: #0f8e69; }
 input, textarea { box-sizing: border-box; width: 100%; margin-top: 12rpx; padding: 18rpx; border: 1rpx solid #dbe3ef; border-radius: 6rpx; background: #f8fafc; color: #1f2937; font-size: 26rpx; }
+.fee-category-picker { box-sizing: border-box; width: 100%; margin-top: 12rpx; border: 1rpx solid #dbe3ef; border-radius: 6rpx; background: #f8fafc; }
+.fee-category-value { position: relative; padding: 18rpx 52rpx 18rpx 18rpx; color: #475569; font-size: 26rpx; line-height: 38rpx; }
+.fee-category-value::after { position: absolute; top: 50%; right: 20rpx; width: 12rpx; height: 12rpx; border-right: 3rpx solid #94a3b8; border-bottom: 3rpx solid #94a3b8; content: ''; transform: translateY(-70%) rotate(45deg); }
+.fee-price-hint { display: block; margin-top: 8rpx; color: #9a6700; font-size: 22rpx; line-height: 1.5; }
+.fee-head { margin-top: 32rpx; }.add-fee { color: #1677ff; font-size: 24rpx; }.fee-card { margin-top: 16rpx; padding: 16rpx; border: 1rpx solid #dbe3ef; border-radius: 8rpx; background: #fbfdff; }.fee-card input { background: #fff; }.remove-fee { display: block; margin-top: 14rpx; color: #dc2626; font-size: 22rpx; text-align: right; }
 textarea { height: 150rpx; }
 .required-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16rpx; margin-top: 18rpx; }
 .scene-card { min-width: 0; padding: 16rpx; border: 1rpx solid #e2e8f0; border-radius: 8rpx; background: #fbfdff; }

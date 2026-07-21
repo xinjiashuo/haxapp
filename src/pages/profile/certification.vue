@@ -88,10 +88,7 @@
       <text v-if="user?.certification?.driver_license_class" class="approved-meta">准驾车型：{{ user.certification.driver_license_class }}</text>
     </view>
 
-    <view v-else class="pending-card">
-      <text>认证资料已提交，请等待后台审核。</text>
-      <text class="pending-meta">审核通过后即可返回租车页面下单。</text>
-    </view>
+    <AppState v-else type="review" title="驾驶人认证审核中" description="认证资料已提交，审核通过后即可在线订车。" />
 
   </view>
 </template>
@@ -100,7 +97,8 @@
 import { computed, reactive, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getProfile, submitCertification, uploadCertificationImage } from '../../api/auth'
-import { clearSession, getToken, getUser, saveUser } from '../../utils/user-session'
+import { getToken, getUser, saveUser } from '../../utils/user-session'
+import AppState from '../../components/AppState.vue'
 
 const user = ref(getUser())
 const submitting = ref(false)
@@ -137,6 +135,7 @@ const licenseClassIndex = computed(() => Math.max(0, licenseClasses.indexOf(form
 
 const loadProfile = async () => {
   if (!getToken()) {
+    uni.setStorageSync('hax_login_redirect', '/pages/profile/certification')
     uni.navigateTo({ url: '/pages/login/index' })
     return
   }
@@ -145,9 +144,7 @@ const loadProfile = async () => {
     user.value = result.data.user
     saveUser(user.value)
   } catch (error) {
-    clearSession()
-    user.value = null
-    uni.navigateTo({ url: '/pages/login/index' })
+    if (error.type !== 'auth') uni.showToast({ title: error.msg || '认证信息读取失败', icon: 'none' })
   }
 }
 
@@ -207,10 +204,7 @@ const submit = async () => {
       success: () => uni.navigateBack()
     })
   } catch (error) {
-    if (error.code === 401) {
-      uni.navigateTo({ url: '/pages/login/index' })
-      return
-    }
+    if (error.type === 'auth') return
     uni.showToast({ title: error.msg || '提交失败', icon: 'none' })
   } finally {
     submitting.value = false

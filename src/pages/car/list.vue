@@ -33,13 +33,15 @@
 
     <view class="section-head"><text class="section-title">可订车辆</text><text class="section-note">{{ carsLoading ? '读取中' : `${cars.length} 辆可选` }}</text></view>
     <view class="car-list">
+      <AppState v-if="carsLoading" type="loading" title="正在查询可订车辆" compact />
+      <AppState v-else-if="carsError" type="error" :description="carsError.msg" action-text="重新查询" compact @action="loadCars" />
       <view v-for="car in cars" :key="car.id" class="car-card">
         <image v-if="car.cover_image" class="car-image" :src="car.cover_image" mode="aspectFill" />
         <view v-else class="car-visual">{{ car.brand }}</view>
         <view class="car-info"><text class="car-name">{{ car.name }}</text><text class="car-meta">{{ car.energy_type_text }} · {{ car.seats || '-' }}座 · {{ car.car_type_text }}</text><text class="car-price">¥{{ car.daily_price }}<text class="price-unit"> / 天起</text></text></view>
         <button class="reserve-button" @click="reserve(car)">订车</button>
       </view>
-      <view v-if="!carsLoading && !cars.length" class="list-empty">当前时间段暂无可租车辆，请调整取还车时间</view>
+      <AppState v-if="!carsLoading && !carsError && !cars.length" type="empty" title="当前时段暂无可租车辆" description="可调整取还车日期和时间后重新查询" action-text="重新查询" compact @action="loadCars" />
     </view>
 
     <view v-if="rulesVisible" class="rule-mask" @click="closeRules">
@@ -61,12 +63,17 @@
             <view class="quote-row"><text>基础租金</text><text>¥{{ quote.base_amount }}</text></view>
             <view class="quote-row"><text>保险费用</text><text>¥{{ quote.insurance_amount }}</text></view>
             <view v-if="Number(quote.delivery_amount) > 0" class="quote-row"><text>{{ quote.delivery_name || '送车上门' }}</text><text>¥{{ quote.delivery_amount }}</text></view>
+            <view v-if="Number(quote.return_amount) > 0" class="quote-row"><text>{{ quote.return_name || '异地还车' }}</text><text>¥{{ quote.return_amount }}</text></view>
             <view v-if="Number(quote.vip_discount_amount) > 0" class="quote-row discount"><text>VIP优惠</text><text>-¥{{ quote.vip_discount_amount }}</text></view>
             <view v-for="promotion in quote.promotions || []" :key="promotion.id" class="quote-row discount"><text>{{ promotion.rule_name }}</text><text v-if="Number(promotion.discount_amount)>0">-¥{{ promotion.discount_amount }}</text><text v-else>完成订单后赠送积分</text></view>
             <view v-if="Number(quote.coupon_discount_amount) > 0" class="quote-row discount"><text>优惠券</text><text>-¥{{ quote.coupon_discount_amount }}</text></view>
             <view v-if="Number(quote.points_discount_amount) > 0" class="quote-row discount"><text>积分抵扣</text><text>-¥{{ quote.points_discount_amount }}</text></view>
             <view class="quote-row total"><text>应付租金</text><text>¥{{ quote.total_amount }}</text></view>
             <view class="quote-row deposit"><text>另付押金</text><text>¥{{ quote.deposit_amount }}</text></view>
+          </view>
+          <view v-if="pendingCar && quote && !quoteLoading && rentalAccess.notice" class="booking-access" :class="rentalAccess.notice_type">
+            <text class="booking-access-title">{{ bookingAccessTitle }}</text>
+            <text class="booking-access-content">{{ rentalAccess.notice }}</text>
           </view>
           <view v-if="pendingCar && quote && !quoteLoading" class="booking-options">
             <text class="options-title">取车方式</text>
@@ -78,6 +85,17 @@
             </view>
             <input v-if="selectedDeliveryMode === 'delivery'" v-model.trim="deliveryAddress" class="delivery-address" maxlength="120" placeholder="请输入青岛市区送车地址" />
             <text v-if="selectedDeliveryMode === 'delivery' && selectedDeliveryOption?.notice" class="option-notice">{{ selectedDeliveryOption.notice }}</text>
+            <view class="return-options-section">
+              <text class="options-title">还车方式</text>
+              <view class="delivery-options">
+                <view v-for="option in returnOptions" :key="option.mode" class="delivery-option" :class="{ active: selectedReturnMode === option.mode, disabled: !option.available }" @click="selectReturnMode(option.mode)">
+                  <text>{{ option.name }}</text>
+                  <text class="delivery-amount">{{ Number(option.amount) > 0 ? `¥${option.amount}` : '免费' }}</text>
+                </view>
+              </view>
+              <input v-if="selectedReturnMode === 'remote'" v-model.trim="returnAddress" class="delivery-address" maxlength="120" placeholder="请输入异地还车地址" />
+              <text v-if="selectedReturnMode === 'remote' && selectedReturnOption?.notice" class="option-notice">{{ selectedReturnOption.notice }}</text>
+            </view>
             <view class="insurance-section visible-insurance">
               <view class="insurance-heading"><text class="insurance-title">车辆 / 行车保障</text><text class="insurance-link" @click="showInsuranceGuide">保障说明</text></view>
               <view v-if="quote.insurance_options?.length" class="insurance-compare-wrap"><scroll-view scroll-x class="insurance-scroll"><view class="insurance-compare"><view class="insurance-label-column"><view class="insurance-head-spacer">保障项目</view><view class="insurance-label">保障说明</view><view class="insurance-label">免赔 / 自付</view><view class="insurance-label">承保范围</view><view class="insurance-label">三者保障</view><view class="insurance-label">易损件</view><view class="insurance-label">免责说明</view><view class="insurance-label insurance-price-label">费用</view></view><view v-for="option in quote.insurance_options" :key="option.id" class="insurance-plan" :class="{ selected: selectedInsuranceIds.includes(option.id) }"><view class="insurance-plan-head" @click="toggleInsurance(option.id)"><view class="plan-badge">保</view><text class="plan-name">{{ option.name }}</text><text v-if="selectedInsuranceIds.includes(option.id)" class="plan-selected">已选</text><text v-else class="plan-select">选择</text></view><view class="insurance-cell"><text>{{ option.description || '基础保障' }}</text></view><view class="insurance-cell strong"><text>{{ Number(option.deductible_amount)>0 ? `¥${option.deductible_amount}` : '免赔额为 0' }}</text></view><view class="insurance-cell"><text>{{ option.coverage_scope || '以保险条款为准' }}</text></view><view class="insurance-cell strong"><text>{{ option.third_party_amount_text || '未包含' }}</text></view><view class="insurance-cell"><text>{{ option.includes_vulnerable_parts ? '包含' : '不包含' }}</text></view><view class="insurance-cell"><text>{{ option.exclusions || '无额外说明' }}</text></view><view class="insurance-price"><text>¥{{ option.amount }}</text><text>{{ option.pricing_type === 'per_day' ? `¥${option.unit_price} / 天` : '按单收取' }}</text><button class="plan-action" @click.stop="toggleInsurance(option.id)">{{ selectedInsuranceIds.includes(option.id) ? '已选择' : '选择' }}</button><text class="plan-detail" @click.stop="toggleInsuranceDetail(option.id)">{{ expandedInsuranceId===option.id ? '收起详情' : '查看详情' }}</text></view><view v-if="expandedInsuranceId===option.id" class="insurance-detail"><text v-if="option.terms">条款备注：{{ option.terms }}</text><text>最终保障以门店合同及保险条款为准。</text></view></view></view></scroll-view></view>
@@ -111,7 +129,7 @@
           <view class="ack-box" :class="{ checked: ackChecked }"></view>
           <text class="ack-text">我已阅读并同意以上租车须知</text>
         </view>
-        <button class="rule-confirm" :class="{ disabled: (requiredRuleCount > 0 && !ackChecked) || quoteLoading }" @click="confirmRules">{{ pendingCar ? '提交订单' : '关闭' }}</button>
+        <button class="rule-confirm" :class="{ disabled: (requiredRuleCount > 0 && !ackChecked) || quoteLoading || !canCreateOnline }" @click="confirmRules">{{ pendingCar ? (canCreateOnline ? '提交订单' : '请联系门店') : '关闭' }}</button>
       </view>
     </view>
     <AppBottomNav active="car" />
@@ -121,6 +139,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import AppBottomNav from '../../components/AppBottomNav.vue'
+import AppState from '../../components/AppState.vue'
 import { getBookingRentalRules } from '../../api/rentalRule'
 import { createRentalOrder, getRentalCars, getRentalQuote } from '../../api/rental'
 
@@ -157,6 +176,7 @@ nextHour.setHours(nextHour.getHours() + 1)
 const later = new Date(nextHour.getTime() + 24 * 60 * 60 * 1000)
 const cars = ref([])
 const carsLoading = ref(false)
+const carsError = ref(null)
 const pickupDate = ref(formatDate(nextHour))
 const pickupClock = ref(formatTime(nextHour))
 const returnDate = ref(formatDate(later))
@@ -176,6 +196,8 @@ const selectedUserCouponId = ref(0)
 const selectedPoints = ref(0)
 const selectedDeliveryMode = ref('store')
 const deliveryAddress = ref('')
+const selectedReturnMode = ref('store')
+const returnAddress = ref('')
 const requiredRuleCount = computed(() => rentalRules.value.filter((rule) => rule.required_ack).length)
 const pickupTimeText = computed(() => `${pickupDate.value} ${pickupClock.value}`)
 const returnTimeText = computed(() => `${returnDate.value} ${returnClock.value}`)
@@ -184,6 +206,14 @@ const deliveryOptions = computed(() => quote.value?.delivery_options || [
   { mode: 'delivery', name: '送车上门', amount: '0.00', available: false, notice: '送车上门暂未配置' }
 ])
 const selectedDeliveryOption = computed(() => deliveryOptions.value.find((option) => option.mode === selectedDeliveryMode.value) || deliveryOptions.value[0])
+const returnOptions = computed(() => quote.value?.return_options || [
+  { mode: 'store', name: '原门店还车', amount: '0.00', available: true },
+  { mode: 'remote', name: '异地还车', amount: '0.00', available: false, notice: '异地还车暂未配置' }
+])
+const selectedReturnOption = computed(() => returnOptions.value.find((option) => option.mode === selectedReturnMode.value) || returnOptions.value[0])
+const rentalAccess = computed(() => quote.value?.rental_access || { can_create_order: true, credit_deposit_available: true, notice_type: '', notice: '' })
+const canCreateOnline = computed(() => rentalAccess.value.can_create_order !== false)
+const bookingAccessTitle = computed(() => rentalAccess.value.notice_type === 'deposit_required' ? '押金方式提示' : '订车提示')
 
 const loadRules = async () => {
   rulesLoading.value = true
@@ -201,12 +231,13 @@ const loadRules = async () => {
 
 const loadCars = async () => {
   carsLoading.value = true
+  carsError.value = null
   try {
     const result = await getRentalCars({ pickup_time: pickupTimeText.value, return_time: returnTimeText.value })
     cars.value = result.data?.data || []
   } catch (error) {
     cars.value = []
-    uni.showToast({ title: error.msg || '车辆读取失败', icon: 'none' })
+    carsError.value = error
   } finally {
     carsLoading.value = false
   }
@@ -222,6 +253,7 @@ const loadQuote = async () => {
       return_time: returnTimeText.value,
       insurance_ids: selectedInsuranceIds.value.join(','),
       delivery_mode: selectedDeliveryMode.value,
+      return_mode: selectedReturnMode.value,
       user_coupon_id: selectedUserCouponId.value,
       points_to_use: selectedPoints.value || 0
     })
@@ -248,6 +280,8 @@ const openRules = () => {
   selectedPoints.value = 0
   selectedDeliveryMode.value = 'store'
   deliveryAddress.value = ''
+  selectedReturnMode.value = 'store'
+  returnAddress.value = ''
   ackChecked.value = false
   rulesVisible.value = true
   if (!rentalRules.value.length && !rulesLoading.value) loadRules()
@@ -272,6 +306,8 @@ const reserve = (car) => {
   selectedPoints.value = 0
   selectedDeliveryMode.value = 'store'
   deliveryAddress.value = ''
+  selectedReturnMode.value = 'store'
+  returnAddress.value = ''
   ackChecked.value = false
   rulesVisible.value = true
   if (!rentalRules.value.length && !rulesLoading.value) loadRules()
@@ -317,9 +353,24 @@ const selectDeliveryMode = async (mode) => {
   await loadQuote()
 }
 
+const selectReturnMode = async (mode) => {
+  const option = returnOptions.value.find((item) => item.mode === mode)
+  if (!option || !option.available) {
+    uni.showToast({ title: option?.notice || '该还车方式暂不可用', icon: 'none' })
+    return
+  }
+  if (selectedReturnMode.value === mode) return
+  selectedReturnMode.value = mode
+  await loadQuote()
+}
+
 const confirmRules = async () => {
   if (!pendingCar.value) {
     closeRules()
+    return
+  }
+  if (!canCreateOnline.value) {
+    uni.showModal({ title: bookingAccessTitle.value, content: rentalAccess.value.notice || '当前订单需门店处理，请在个人中心联系门店。', showCancel: false })
     return
   }
   if (requiredRuleCount.value > 0 && !ackChecked.value) {
@@ -328,6 +379,10 @@ const confirmRules = async () => {
   }
   if (selectedDeliveryMode.value === 'delivery' && !deliveryAddress.value) {
     uni.showToast({ title: '请填写送车上门地址', icon: 'none' })
+    return
+  }
+  if (selectedReturnMode.value === 'remote' && !returnAddress.value) {
+    uni.showToast({ title: '请填写异地还车地址', icon: 'none' })
     return
   }
   if (!quote.value || quoteLoading.value) {
@@ -341,12 +396,14 @@ const confirmRules = async () => {
       pickup_time: pickupTimeText.value,
       return_time: returnTimeText.value,
       pickup_location: deliveryAddress.value || '市区门店',
-      return_location: '市区门店',
+      return_location: returnAddress.value || '市区门店',
       insurance_ids: selectedInsuranceIds.value,
       user_coupon_id: selectedUserCouponId.value,
       points_to_use: selectedPoints.value || 0,
       delivery_mode: selectedDeliveryMode.value,
       delivery_address: deliveryAddress.value,
+      return_mode: selectedReturnMode.value,
+      return_address: returnAddress.value,
       rules_acknowledged: true
     })
     rulesVisible.value = false
@@ -358,10 +415,6 @@ const confirmRules = async () => {
     }
     uni.navigateTo({ url: `/pages/order/payment?id=${orderId}` })
   } catch (error) {
-    if (error.code === 401) {
-      uni.navigateTo({ url: '/pages/login/index' })
-      return
-    }
     if (error.code === 403 && error.data?.offline_booking_available) {
       uni.showModal({
         title: '需要实名认证',
@@ -453,6 +506,7 @@ onMounted(async () => {
 .quote-row.discount { color: #0f8e69; }
 .quote-row.total { margin-top: 6rpx; padding-top: 14rpx; border-top: 1rpx solid #e5e7eb; color: #111827; font-size: 29rpx; font-weight: 700; }
 .quote-row.deposit { color: #9a6700; font-size: 22rpx; }
+.booking-access { display:flex; flex-direction:column; gap:8rpx; margin-top:16rpx; padding:18rpx; border-radius:8rpx; background:#fff7ed; color:#9a6700; }.booking-access.deposit_required { background:#eef6ff; color:#2563eb; }.booking-access-title { font-size:24rpx; font-weight:700; }.booking-access-content { font-size:22rpx; line-height:1.5; }
 .points-row { display:flex; align-items:center; justify-content:space-between; gap:16rpx; color:#64748b; font-size:22rpx; }.points-input{width:150rpx;height:56rpx;padding:0 12rpx;border-radius:6rpx;background:#f8fafc;color:#1677ff;font-size:24rpx;text-align:right;box-sizing:border-box;}
 .booking-options { margin-top: 16rpx; padding: 18rpx; border-radius: 8rpx; background: #f8fafc; }
 .options-title { display: block; color: #1f2937; font-size: 25rpx; font-weight: 700; }
@@ -463,6 +517,7 @@ onMounted(async () => {
 .delivery-amount { display: block; margin-top: 6rpx; color: #6b7280; font-size: 21rpx; }
 .delivery-address { height: 76rpx; margin-top: 12rpx; padding: 0 16rpx; border: 1rpx solid #dbe3ef; border-radius: 6rpx; background: #fff; box-sizing: border-box; font-size: 24rpx; }
 .option-notice { display: block; margin-top: 8rpx; color: #d97706; font-size: 21rpx; }
+.return-options-section { margin-top: 18rpx; padding-top: 16rpx; border-top: 1rpx solid #e5e7eb; }
 .insurance-section { margin-top: 14rpx; padding-top: 14rpx; border-top: 1rpx solid #e5e7eb; }
 .visible-insurance { margin-top: 20rpx; padding-top: 16rpx; }
 .no-insurance { display: block; margin-top: 12rpx; color: #9ca3af; font-size: 22rpx; }

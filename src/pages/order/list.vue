@@ -1,10 +1,13 @@
 <template>
   <view class="page">
+    <AppState v-if="!isLoggedIn" type="login" title="登录后查看订单" description="租赁订单和汽车服务订单都会保留在这里" action-text="去登录" @action="goLogin" />
+    <template v-else>
     <view class="tabs">
       <view class="tab" :class="{ active: activeTab === 'rental' }" @click="switchTab('rental')">租赁订单</view>
       <view class="tab" :class="{ active: activeTab === 'service' }" @click="switchTab('service')">服务订单</view>
     </view>
-    <view v-if="activeTab === 'rental' && loading" class="empty-state"><text class="empty-note">订单读取中</text></view>
+    <AppState v-if="activeTab === 'rental' && loading" type="loading" title="订单读取中" />
+    <AppState v-else-if="activeTab === 'rental' && rentalError" type="error" :description="rentalError.msg" action-text="重新加载" @action="loadOrders" />
     <view v-else-if="activeTab === 'rental' && orders.length" class="order-list">
       <view v-for="order in orders" :key="order.id" class="order-card" @click="openDetail(order.id)">
         <view class="order-head"><text class="order-no">{{ order.order_no }}</text><text class="order-status">{{ order.user_status_text || order.status_text }}</text></view>
@@ -12,10 +15,11 @@
         <text class="order-time">取车 {{ order.pickup_time }}</text>
         <text class="order-time">还车 {{ order.return_time }}</text>
         <text v-if="paymentCountdown(order)" class="payment-countdown">请在 {{ paymentCountdown(order) }} 内{{ order.payment_deadline_type === 'deposit' ? '支付押金' : '支付租金' }}</text>
-        <view class="order-foot"><text class="order-amount">¥{{ order.total_amount }}</text><view class="order-actions"><button v-if="canPay(order)" class="pay-button" @click.stop="payOrder(order)">支付租金</button><button v-if="canPayDeposit(order)" class="pay-button" @click.stop="payDeposit(order)">支付押金</button><button v-if="canPayDeposit(order)" class="credit-button" @click.stop="chooseCreditDeposit(order)">信用免押</button><button v-else-if="canCancel(order)" class="cancel-button" @click.stop="cancelOrder(order)">取消订单</button><text v-else-if="!canPay(order) && !canPayDeposit(order)" class="order-action">查看详情</text></view></view>
+        <view class="order-foot"><text class="order-amount">¥{{ order.total_amount }}</text><view class="order-actions"><button v-if="canPay(order)" class="pay-button" @click.stop="payOrder(order)">支付租金</button><button v-if="canPayDeposit(order)" class="pay-button" @click.stop="payDeposit(order)">支付押金</button><button v-if="canPayDeposit(order) && order.credit_deposit_available !== false" class="credit-button" @click.stop="chooseCreditDeposit(order)">信用免押</button><button v-else-if="canCancel(order)" class="cancel-button" @click.stop="cancelOrder(order)">取消订单</button><text v-else-if="!canPay(order) && !canPayDeposit(order)" class="order-action">查看详情</text><text v-if="canPayDeposit(order) && order.credit_deposit_available === false" class="credit-note">{{ order.credit_deposit_notice || '当前订单暂不支持信用免押，请支付普通押金。' }}</text></view></view>
       </view>
     </view>
-    <view v-else-if="activeTab === 'service' && serviceLoading" class="empty-state"><text class="empty-note">订单读取中</text></view>
+    <AppState v-else-if="activeTab === 'service' && serviceLoading" type="loading" title="订单读取中" />
+    <AppState v-else-if="activeTab === 'service' && serviceError" type="error" :description="serviceError.msg" action-text="重新加载" @action="loadServiceOrders" />
     <view v-else-if="activeTab === 'service' && serviceOrders.length" class="order-list">
       <view v-for="order in serviceOrders" :key="order.id" class="order-card" @click="openServiceDetail(order.id)">
         <view class="order-head"><text class="order-no">{{ order.order_no }}</text><text class="order-status">{{ order.status_text }}</text></view>
@@ -25,29 +29,31 @@
         <view class="order-foot"><text class="order-amount">{{ serviceAmountText(order) }}</text><view class="order-actions"><button v-if="canPayService(order)" class="pay-button" @click.stop="payService(order)">{{ Number(order.paid_amount||0)>0?'去补款':'去支付' }}</button><button v-else-if="canCancelService(order)" class="cancel-button" @click.stop="cancelService(order)">取消预约</button><text v-else class="order-action">查看详情</text></view></view>
       </view>
     </view>
-    <view v-else class="empty-state">
-      <text class="empty-title">{{ activeTab === 'rental' ? '暂无租赁订单' : '暂无服务订单' }}</text>
-      <text class="empty-note">{{ activeTab === 'rental' ? '预约车辆后，订单会显示在这里' : '完成汽车服务预约后，订单会显示在这里' }}</text>
-    </view>
+    <AppState v-else type="empty" :title="activeTab === 'rental' ? '暂无租赁订单' : '暂无服务订单'" :description="activeTab === 'rental' ? '预约车辆后，订单会显示在这里' : '完成汽车服务预约后，订单会显示在这里'" />
+    </template>
     <AppBottomNav active="profile" />
     <CreditDepositQrModal v-model="alipayQrVisible" :order-no="creditOrder?.order_no" :amount="creditOrder?.deposit_amount" />
   </view>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import AppBottomNav from '../../components/AppBottomNav.vue'
 import CreditDepositQrModal from '../../components/CreditDepositQrModal.vue'
+import AppState from '../../components/AppState.vue'
 import { cancelRentalOrder, getRentalOrders, prepareRentalCreditDeposit } from '../../api/rental'
 import { cancelServiceOrder, getServiceOrders } from '../../api/service'
 import { getToken } from '../../utils/user-session'
 
 const activeTab = ref('rental')
+const isLoggedIn = computed(() => !!getToken())
 const orders = ref([])
 const loading = ref(false)
 const serviceOrders = ref([])
 const serviceLoading = ref(false)
+const rentalError = ref(null)
+const serviceError = ref(null)
 const alipayQrVisible = ref(false)
 const creditOrder = ref(null)
 let countdownTimer = null
@@ -55,15 +61,12 @@ let countdownTimer = null
 const loadOrders = async () => {
   if (!getToken()) return
   loading.value = true
+  rentalError.value = null
   try {
     const result = await getRentalOrders()
     orders.value = result.data?.data || []
   } catch (error) {
-    if (error.code === 401) {
-      uni.navigateTo({ url: '/pages/login/index' })
-      return
-    }
-    uni.showToast({ title: error.msg || '订单读取失败', icon: 'none' })
+    rentalError.value = error
   } finally {
     loading.value = false
   }
@@ -72,15 +75,12 @@ const loadOrders = async () => {
 const loadServiceOrders = async () => {
   if (!getToken()) return
   serviceLoading.value = true
+  serviceError.value = null
   try {
     const result = await getServiceOrders()
     serviceOrders.value = result.data?.data || []
   } catch (error) {
-    if (error.code === 401) {
-      uni.navigateTo({ url: '/pages/login/index' })
-      return
-    }
-    uni.showToast({ title: error.msg || '服务订单读取失败', icon: 'none' })
+    serviceError.value = error
   } finally {
     serviceLoading.value = false
   }
@@ -90,6 +90,10 @@ const switchTab = async (tab) => {
   activeTab.value = tab
   if (tab === 'service') await loadServiceOrders()
   else await loadOrders()
+}
+const goLogin = () => {
+  uni.setStorageSync('hax_login_redirect', '/pages/order/list')
+  uni.navigateTo({ url: '/pages/login/index' })
 }
 
 const openDetail = (id) => uni.navigateTo({ url: `/pages/order/detail?id=${id}` })
@@ -196,4 +200,5 @@ onUnload(stopCountdown)
 .pay-button { background: #1677ff; color: #fff; }
 .credit-button { border: 1rpx solid #80b5ff; background: #eef6ff; color: #1677ff; }
 .cancel-button { margin: 0; padding: 0 20rpx; border: 1rpx solid #fecaca; border-radius: 6rpx; background: #fff; color: #dc2626; font-size: 22rpx; line-height: 54rpx; }
+.credit-note{flex-basis:100%;display:block;margin-top:8rpx;color:#9a6700;font-size:20rpx;line-height:1.45}
 </style>

@@ -5,6 +5,7 @@ export const getServices = () => request({
   method: 'GET'
 })
 export const getServiceQuote = (data = {}) => request({ url: '/services/quote', method: 'GET', data })
+export const getServiceAvailabilityDates = (data = {}) => request({ url: '/services/availability-dates', method: 'GET', data })
 export const getServiceAvailability = (data = {}) => request({ url: '/services/availability', method: 'GET', data })
 
 export const createServiceOrder = (data) => request({

@@ -41,6 +41,8 @@
       <button class="profile-tip-button" @click="goProfileEdit">去完善</button>
     </view>
 
+    <AppState v-if="user && profileError" type="error" compact title="账户信息读取失败" :description="profileError.msg" action-text="重新加载" @action="loadProfile" />
+
     <view class="stats-card">
       <view class="stat-item" @click="goPoints">
         <text class="stat-value">{{ user ? user.points : '--' }}</text>
@@ -88,7 +90,7 @@
     </view>
 
     <view class="menu-section secondary">
-      <view class="menu-row" @click="showTodo"><text class="menu-title">设置</text><view class="arrow-icon"></view></view>
+      <view class="menu-row" @click="openSettings"><text class="menu-title">账户设置</text><view class="arrow-icon"></view></view>
     </view>
     <view class="store-quick-actions">
       <text @click="contactStore">联系我们</text><text class="action-divider">/</text><text @click="navigateStore">导航到店</text>
@@ -103,6 +105,7 @@ import { onShow } from '@dcloudio/uni-app'
 import { getProfile, logout } from '../../api/auth'
 import { clearSession, getToken, getUser, saveUser } from '../../utils/user-session'
 import AppBottomNav from '../../components/AppBottomNav.vue'
+import AppState from '../../components/AppState.vue'
 import { getMemberOverview } from '../../api/member'
 import { getMessages } from '../../api/message'
 import { getStoreProfile } from '../../api/store-config'
@@ -111,6 +114,7 @@ const user = ref(getUser())
 const coupons = ref(0)
 const orders = ref(0)
 const unreadMessages = ref(0)
+const profileError = ref(null)
 const store = ref({ merchant_name: 'Hax租车', contact_phones: [], address: '', latitude: null, longitude: null })
 const profilePromptKey = 'hax_profile_prompt_after_login'
 const certificationText = computed(() => {
@@ -125,8 +129,10 @@ const loadProfile = async () => {
     coupons.value = 0
     orders.value = 0
     unreadMessages.value = 0
+    profileError.value = null
     return
   }
+  profileError.value = null
   try {
     const result = await getProfile()
     user.value = result.data.user
@@ -142,8 +148,7 @@ const loadProfile = async () => {
     }
     try { unreadMessages.value = (await getMessages({ limit: 1 })).data?.unread_count || 0 } catch (_) { unreadMessages.value = 0 }
   } catch (error) {
-    clearSession()
-    user.value = null
+    if (error.type !== 'auth') profileError.value = error
   }
 }
 
@@ -169,7 +174,10 @@ const loadStoreProfile = async () => {
   try { store.value = { ...store.value, ...((await getStoreProfile()).data || {}) } } catch (_) { /* 门店配置未完成时保留默认展示。 */ }
 }
 
-const goLogin = () => uni.navigateTo({ url: '/pages/login/index' })
+const goLogin = () => {
+  uni.setStorageSync('hax_login_redirect', '/pages/profile/index')
+  uni.navigateTo({ url: '/pages/login/index' })
+}
 const goProfileEdit = () => user.value && uni.navigateTo({ url: '/pages/profile/edit' })
 const goBindMobile = () => user.value && !user.value.mobile && uni.navigateTo({ url: '/pages/profile/bind-mobile' })
 const goOrders = () => user.value ? uni.reLaunch({ url: '/pages/order/list' }) : goLogin()
@@ -192,7 +200,17 @@ const navigateStore = () => {
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude === 0 || longitude === 0) return uni.showToast({ title: '商家暂未配置门店坐标', icon: 'none' })
   uni.openLocation({ latitude, longitude, name: store.value.merchant_name || '门店', address: store.value.address || '', scale: 16 })
 }
-const showTodo = () => uni.showToast({ title: '功能开发中', icon: 'none' })
+const openSettings = () => {
+  if (!user.value) return goLogin()
+  uni.showActionSheet({
+    itemList: ['编辑个人资料', '消息通知设置', '退出当前账号'],
+    success: ({ tapIndex }) => {
+      if (tapIndex === 0) return goProfileEdit()
+      if (tapIndex === 1) return uni.openSetting({})
+      if (tapIndex === 2) handleLogout()
+    }
+  })
+}
 const handleCertification = () => user.value
   ? uni.navigateTo({ url: '/pages/profile/certification' })
   : goLogin()

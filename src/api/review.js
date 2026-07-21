@@ -3,6 +3,8 @@ import { APP_CONFIG } from '../config/app'
 
 export const createOrderReview = (data) => request({ url: '/order-reviews', method: 'POST', data })
 export const followUpOrderReview = (id, data) => request({ url: `/order-reviews/${id}/follow-up`, method: 'POST', data })
+export const hideOrderReview = (id) => request({ url: `/order-reviews/${id}/hide`, method: 'POST' })
+export const appealOrderReview = (id, data) => request({ url: `/order-reviews/${id}/appeal`, method: 'POST', data })
 
 export const uploadOrderReviewImage = (filePath) => new Promise((resolve, reject) => {
   const token = uni.getStorageSync('hax_user_token')

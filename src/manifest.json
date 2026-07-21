@@ -60,6 +60,7 @@
             }
         },
         "requiredPrivateInfos" : [
+            "chooseLocation",
             "getLocation"
         ],
         "usingComponents" : true

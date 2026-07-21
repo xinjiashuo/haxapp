@@ -218,6 +218,12 @@
 			}
 		},
 		{
+			"path": "pages/moment/reports",
+			"style": {
+				"navigationBarTitleText": "举报记录"
+			}
+		},
+		{
 			"path": "pages/moment/publish",
 			"style": {
 				"navigationBarTitleText": "发布旅记"

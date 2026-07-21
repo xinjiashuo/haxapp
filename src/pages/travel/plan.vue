@@ -6,7 +6,7 @@
       <view class="setting-row"><text>出发日期</text><picker mode="date" :value="planDate" @change="planDate = $event.detail.value"><view class="picker-value">{{ planDate }}</view></picker></view>
       <view class="setting-row"><text>游玩天数</text><view class="stepper"><text @click="changeDays(-1)">−</text><text>{{ dayCount }} 天</text><text @click="changeDays(1)">＋</text></view></view>
       <view class="setting-row"><text>每日时间</text><view class="time-group"><picker mode="time" :value="dayStart" @change="dayStart = $event.detail.value"><text>{{ dayStart }}</text></picker><text>至</text><picker mode="time" :value="dayEnd" @change="dayEnd = $event.detail.value"><text>{{ dayEnd }}</text></picker></view></view>
-      <view class="location-row"><text>{{ locationText }}</text><text class="location-action" @click="locate">{{ locating ? '定位中' : '更新定位' }}</text></view>
+      <view class="location-row"><text>{{ locationText }}</text><text class="location-action" @click="selectOrigin">{{ locating ? '定位中' : '选择起点' }}</text></view>
     </view>
 
     <view class="auto-plan-card">
@@ -48,13 +48,16 @@ import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import AppBottomNav from '../../components/AppBottomNav.vue'
 import { getTravelItinerarySuggestions, getTravelRecommendations, saveTravelItinerary } from '../../api/travel'
+import { getStoreProfile } from '../../api/store-config'
 import { getToken } from '../../utils/user-session'
 
 const categories = [{ key: 'eat', name: '吃' }, { key: 'drink', name: '喝' }, { key: 'play', name: '玩' }]
-const activeType = ref('eat'), foods = ref([]), drinks = ref([]), spots = ref([]), selected = ref([]), location = ref(null), locating = ref(false), planning = ref(false), loading = ref(false), suggestions = ref([]), savingSuggestion = ref('')
+const cityCenter = { latitude: 36.0671, longitude: 120.3826, label: '青岛市中心' }
+const activeType = ref('eat'), foods = ref([]), drinks = ref([]), spots = ref([]), selected = ref([]), location = ref({ ...cityCenter }), locating = ref(false), planning = ref(false), loading = ref(false), suggestions = ref([]), savingSuggestion = ref('')
+const store = ref({ merchant_name: '门店', latitude: null, longitude: null, address: '' })
 const planName = ref(''), planDate = ref(new Date().toISOString().slice(0, 10)), dayCount = ref(1), dayStart = ref('09:00'), dayEnd = ref('20:00')
 const currentPlaces = computed(() => (({ eat: foods.value, drink: drinks.value, play: spots.value })[activeType.value] || []).filter((place) => place.latitude !== null && place.latitude !== undefined && place.latitude !== '' && place.longitude !== null && place.longitude !== undefined && place.longitude !== ''))
-const locationText = computed(() => location.value ? '已获取当前位置，将按实际位置规划' : '请授权定位，用于计算路线')
+const locationText = computed(() => `起点：${location.value?.label || '青岛市中心'}`)
 const keyOf = (place) => `${place.target_type}-${place.target_id}`
 const isSelected = (place) => selected.value.some((item) => keyOf(item) === keyOf(place))
 const durationText = (minutes) => Number(minutes || 0) ? `建议 ${Number(minutes)} 分钟` : '建议停留以现场为准'
@@ -65,13 +68,23 @@ const changeDays = (delta) => { dayCount.value = Math.min(7, Math.max(1, dayCoun
 const goItineraries = () => uni.navigateTo({ url: '/pages/travel/itineraries' })
 
 const loadPlaces = async () => { loading.value = true; try { const result = await getTravelRecommendations(100); foods.value = result.data?.foods || []; drinks.value = result.data?.drinks || []; spots.value = result.data?.scenic_spots || [] } catch (error) { uni.showToast({ title: error.msg || '地点加载失败', icon: 'none' }) } finally { loading.value = false } }
-const locate = async () => { if (locating.value) return false; locating.value = true; try { location.value = await new Promise((resolve, reject) => uni.getLocation({ type: 'gcj02', success: resolve, fail: reject })); return true } catch (_) { uni.showToast({ title: '需要授权定位后才能规划路线', icon: 'none' }); return false } finally { locating.value = false } }
+const locate = async () => { if (locating.value) return false; locating.value = true; try { const point = await new Promise((resolve, reject) => uni.getLocation({ type: 'gcj02', success: resolve, fail: reject })); location.value = { latitude: point.latitude, longitude: point.longitude, label: '当前位置' }; return true } catch (_) { uni.showToast({ title: '定位未授权，已保留当前起点', icon: 'none' }); return false } finally { locating.value = false } }
+const useStoreOrigin = () => {
+  if (!Number.isFinite(Number(store.value.latitude)) || !Number.isFinite(Number(store.value.longitude))) { location.value = { ...cityCenter }; return uni.showToast({ title: '门店坐标暂未配置，已使用青岛市中心', icon: 'none' }) }
+  location.value = { latitude: Number(store.value.latitude), longitude: Number(store.value.longitude), label: store.value.merchant_name || '门店' }
+}
+const chooseHotelOrigin = async () => {
+  try {
+    const point = await new Promise((resolve, reject) => uni.chooseLocation({ success: resolve, fail: reject }))
+    location.value = { latitude: point.latitude, longitude: point.longitude, label: point.name || point.address || '酒店/住宿' }
+  } catch (_) { uni.showToast({ title: '未选择酒店位置，已保留当前起点', icon: 'none' }) }
+}
+const selectOrigin = () => uni.showActionSheet({ itemList: ['使用当前位置', '从门店出发', '选择酒店/住宿', '青岛市中心'], success: ({ tapIndex }) => { if (tapIndex === 0) locate(); else if (tapIndex === 1) useStoreOrigin(); else if (tapIndex === 2) chooseHotelOrigin(); else location.value = { ...cityCenter } } })
 const togglePlace = (place) => { suggestions.value = []; const index = selected.value.findIndex((item) => keyOf(item) === keyOf(place)); if (index >= 0) { selected.value.splice(index, 1); return } if (selected.value.length >= 16) return uni.showToast({ title: '一次最多选择 16 个地点', icon: 'none' }); selected.value.push(place) }
 const planPayload = (targets, name = planName.value) => ({ name, start_date: planDate.value, day_count: dayCount.value, day_start_time: dayStart.value, day_end_time: dayEnd.value, latitude: location.value.latitude, longitude: location.value.longitude, targets })
 const createAndSave = async () => {
   if (!getToken()) return uni.navigateTo({ url: '/pages/login/index' })
   if (!selected.value.length) return uni.showToast({ title: '请先选择至少一个地点', icon: 'none' })
-  if (!location.value && !(await locate())) return
   planning.value = true
   try {
     const result = await saveTravelItinerary(planPayload(selected.value.map((item) => ({ target_type: item.target_type, target_id: item.target_id }))))
@@ -80,7 +93,6 @@ const createAndSave = async () => {
   } catch (error) { uni.showToast({ title: error.msg || '行程规划失败', icon: 'none' }) } finally { planning.value = false }
 }
 const generateSuggestions = async () => {
-  if (!location.value && !(await locate())) return
   planning.value = true
   try {
     const result = await getTravelItinerarySuggestions({ start_date: planDate.value, day_count: dayCount.value, day_start_time: dayStart.value, day_end_time: dayEnd.value, latitude: location.value.latitude, longitude: location.value.longitude })
@@ -90,7 +102,6 @@ const generateSuggestions = async () => {
 }
 const saveSuggestion = async (plan) => {
   if (!getToken()) return uni.navigateTo({ url: '/pages/login/index' })
-  if (!location.value && !(await locate())) return
   savingSuggestion.value = plan.key
   try {
     const result = await saveTravelItinerary(planPayload(plan.targets, planName.value || plan.name))
@@ -98,7 +109,8 @@ const saveSuggestion = async (plan) => {
     setTimeout(() => uni.navigateTo({ url: `/pages/travel/itinerary?id=${result.data.id}` }), 350)
   } catch (error) { uni.showToast({ title: error.msg || '行程保存失败', icon: 'none' }) } finally { savingSuggestion.value = '' }
 }
-onLoad(() => { loadPlaces(); locate() })
+const loadStore = async () => { try { store.value = { ...store.value, ...((await getStoreProfile()).data || {}) } } catch (_) { /* 使用青岛市中心作为稳定降级起点。 */ } }
+onLoad(() => { loadPlaces(); loadStore() })
 </script>
 
 <style scoped>

@@ -11,11 +11,12 @@
           <text>{{ category.name }}</text>
           <text class="category-count">{{ itemCount(category.id) }}</text>
         </view>
-        <view v-if="!loading && !categories.length" class="category-empty">暂无分类</view>
+        <view v-if="!loading && !loadError && !categories.length" class="category-empty">暂无分类</view>
       </scroll-view>
 
       <scroll-view class="item-panel" scroll-y>
-        <view v-if="loading" class="empty-state">服务项目读取中</view>
+        <AppState v-if="loading" type="loading" title="服务项目读取中" compact />
+        <AppState v-else-if="loadError" type="error" :description="loadError.msg" action-text="重新加载" compact @action="loadServices" />
         <view v-else-if="currentItems.length" class="item-list">
           <view v-for="item in currentItems" :key="item.id" class="service-card">
             <image v-if="item.cover_image" class="service-image" :src="item.cover_image" mode="aspectFill" />
@@ -27,7 +28,7 @@
             </view>
           </view>
         </view>
-        <view v-else class="empty-state">该分类暂无服务项目</view>
+        <AppState v-else type="empty" :title="categories.length ? '该分类暂无服务项目' : '暂无汽车服务项目'" description="门店正在完善服务内容" compact />
       </scroll-view>
     </view>
     <view v-if="selectedItem" class="booking-mask" @click="closeBooking">
@@ -35,7 +36,8 @@
         <view class="booking-head"><view><text class="booking-title">预约{{ selectedItem.name }}</text><text class="booking-price">{{ priceText(selectedItem) }} / {{ selectedItem.unit || '次' }} · {{ selectedItem.estimated_work_units || 4 }} 工时（约{{ selectedItem.estimated_duration_minutes || 60 }}分钟）</text></view><text class="booking-close" @click="closeBooking">×</text></view>
         <view class="booking-body">
           <view class="form-row"><text class="form-label">预约日期</text><picker mode="date" :value="appointmentDate" :start="today" @change="changeAppointmentDate"><view class="picker-value primary">{{ appointmentDate }}</view></picker></view>
-          <view class="time-section"><view class="time-section-head"><text class="form-label">可约时段</text><text class="time-section-tip">每格 15 分钟</text></view><view v-if="availableSlots.length" class="slot-grid"><view v-for="slot in availableSlots" :key="slot.time" class="slot-item" :class="{ selected: appointmentTime === slot.time, full: slot.status === 'full' }" @click="selectSlot(slot)"><text>{{ slot.time }}</text><text class="slot-status">{{ slot.status === 'full' ? '已满' : `余${slot.available_workstation_count}` }}</text></view></view><text v-else class="no-slot">当日暂无可预约时段</text></view>
+          <view class="date-section"><view class="time-section-head"><text class="form-label">可约日期</text><text class="time-section-tip">按工位营业时间展示</text></view><scroll-view scroll-x class="date-scroll"><view class="date-list"><view v-for="day in availabilityDates" :key="day.date" class="date-option" :class="{ selected: appointmentDate===day.date, disabled: day.status!=='available' }" @click="selectAppointmentDate(day)"><text>{{ day.date.slice(5).replace('-', '/') }}</text><text>周{{ day.weekday_text }}</text><text class="date-status">{{ day.status_text }}</text></view></view></scroll-view><text v-if="dateLoading" class="date-hint">正在读取工位可约日期</text><text v-else-if="dateError" class="date-hint error" @click="loadAvailabilityDates()">日期读取失败，点击重试</text></view>
+          <view class="time-section"><view class="time-section-head"><text class="form-label">可约时段</text><text class="time-section-tip">每格 15 分钟</text></view><AppState v-if="slotLoading" type="loading" title="正在读取可约时段" compact /><AppState v-else-if="slotError" type="error" :description="slotError.msg" action-text="重新读取" compact @action="loadAvailability" /><view v-else-if="availableSlots.length" class="slot-grid"><view v-for="slot in availableSlots" :key="slot.time" class="slot-item" :class="{ selected: appointmentTime === slot.time, full: slot.status === 'full' }" @click="selectSlot(slot)"><text>{{ slot.time }}</text><text class="slot-status">{{ slot.status === 'full' ? '已满' : `余${slot.available_workstation_count}` }}</text></view></view><AppState v-else type="no-slot" action-text="查找下一可约日期" compact @action="findNextAvailability" /></view>
           <view class="form-row"><text class="form-label">车牌号</text><input v-model.trim="form.plateNo" class="form-input" maxlength="30" placeholder="例如：鲁B12345" /></view>
           <view class="form-row"><text class="form-label">联系人</text><input v-model.trim="form.customerName" class="form-input" maxlength="100" placeholder="请输入联系人称呼" /></view>
           <view class="form-row"><text class="form-label">手机号</text><input v-model.trim="form.mobile" class="form-input" type="number" maxlength="11" placeholder="用于门店确认预约" /></view>
@@ -55,13 +57,15 @@
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import AppBottomNav from '../../components/AppBottomNav.vue'
-import { createServiceOrder, getServiceAvailability, getServiceQuote, getServices } from '../../api/service'
+import AppState from '../../components/AppState.vue'
+import { createServiceOrder, getServiceAvailability, getServiceAvailabilityDates, getServiceQuote, getServices } from '../../api/service'
 import { getToken, getUser } from '../../utils/user-session'
 
 const categories = ref([])
 const items = ref([])
 const activeCategoryId = ref(0)
 const loading = ref(false)
+const loadError = ref(null)
 const selectedItem = ref(null)
 const submitting = ref(false)
 const form = ref({ plateNo: '', customerName: '', mobile: '', remark: '' })
@@ -70,6 +74,11 @@ const selectedCouponId = ref(0)
 const selectedPoints = ref(0)
 const availableSlots = ref([])
 const appointmentTime = ref('')
+const availabilityDates = ref([])
+const dateLoading = ref(false)
+const dateError = ref(null)
+const slotLoading = ref(false)
+const slotError = ref(null)
 
 const formatDate = (date) => `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`
 const today = formatDate(new Date())
@@ -86,6 +95,7 @@ const priceText = (item) => {
 
 const book = (item) => {
   if (!getToken()) {
+    uni.setStorageSync('hax_login_redirect', '/pages/service/index')
     uni.navigateTo({ url: '/pages/login/index' })
     return
   }
@@ -97,7 +107,7 @@ const book = (item) => {
   appointmentTime.value = ''
   selectedCouponId.value = 0
   selectedPoints.value = 0
-  loadAvailability(true)
+  loadAvailabilityDates()
   loadQuote()
 }
 
@@ -107,26 +117,66 @@ const addDays = (date, days) => {
   return formatDate(value)
 }
 
-const loadAvailability = async (findNextDate = false, attempts = 0) => {
+const loadAvailabilityDates = async (startDate = today, autoSelect = true) => {
   if (!selectedItem.value) return
+  dateLoading.value = true
+  dateError.value = null
+  try {
+    const result = await getServiceAvailabilityDates({ service_item_id: selectedItem.value.id, start_date: startDate, days: 14 })
+    availabilityDates.value = result.data?.dates || []
+    const selected = availabilityDates.value.find((day) => day.date === appointmentDate.value && day.status === 'available')
+    const nextAvailable = availabilityDates.value.find((day) => day.status === 'available')
+    if (autoSelect && !selected && nextAvailable) appointmentDate.value = nextAvailable.date
+    await loadAvailability()
+  } catch (error) {
+    availabilityDates.value = []
+    dateError.value = error
+    availableSlots.value = []
+    appointmentTime.value = ''
+  } finally {
+    dateLoading.value = false
+  }
+}
+
+const loadAvailability = async () => {
+  if (!selectedItem.value) return
+  slotLoading.value = true
+  slotError.value = null
   try {
     const result = await getServiceAvailability({ service_item_id: selectedItem.value.id, date: appointmentDate.value })
     availableSlots.value = result.data?.slots || []
     const firstAvailable = availableSlots.value.find((slot) => slot.status === 'available')
     appointmentTime.value = firstAvailable?.time || ''
-    if (findNextDate && !firstAvailable && attempts < 14) {
-      appointmentDate.value = addDays(appointmentDate.value, 1)
-      await loadAvailability(true, attempts + 1)
-    }
   } catch (error) {
     availableSlots.value = []
     appointmentTime.value = ''
-    uni.showToast({ title: error.msg || '预约时段读取失败', icon: 'none' })
+    slotError.value = error
+  } finally {
+    slotLoading.value = false
   }
+}
+
+const findNextAvailability = async () => {
+  const next = availabilityDates.value.find((day) => day.date > appointmentDate.value && day.status === 'available')
+  if (next) {
+    appointmentDate.value = next.date
+    await loadAvailability()
+    return
+  }
+  const lastDate = availabilityDates.value[availabilityDates.value.length - 1]?.date || appointmentDate.value
+  await loadAvailabilityDates(addDays(lastDate, 1), true)
 }
 
 const changeAppointmentDate = async ({ detail }) => {
   appointmentDate.value = detail.value
+  await loadAvailability()
+}
+const selectAppointmentDate = async (day) => {
+  if (day.status !== 'available') {
+    uni.showToast({ title: day.status === 'full' ? '该日期预约已满，请选择其他日期' : '该日期工位不可预约，请选择其他日期', icon: 'none' })
+    return
+  }
+  appointmentDate.value = day.date
   await loadAvailability()
 }
 const selectSlot = (slot) => {
@@ -178,10 +228,7 @@ const submitBooking = async () => {
       success: () => uni.redirectTo({ url: `/pages/order/service-payment?id=${result.data?.id}` })
     })
   } catch (error) {
-    if (error.code === 401) {
-      uni.navigateTo({ url: '/pages/login/index' })
-      return
-    }
+    if (error.type === 'auth') return
     uni.showToast({ title: error.msg || '预约提交失败', icon: 'none' })
   } finally {
     submitting.value = false
@@ -190,6 +237,7 @@ const submitBooking = async () => {
 
 const loadServices = async () => {
   loading.value = true
+  loadError.value = null
   try {
     const result = await getServices()
     categories.value = result.data?.categories || []
@@ -201,7 +249,7 @@ const loadServices = async () => {
     categories.value = []
     items.value = []
     activeCategoryId.value = 0
-    uni.showToast({ title: error.msg || '服务读取失败', icon: 'none' })
+    loadError.value = error
   } finally {
     loading.value = false
   }
@@ -247,7 +295,7 @@ onShow(loadServices)
 .booking-body { flex: 1; min-height: 0; margin-top: 20rpx; overflow-y: auto; }
 .form-row { display: flex; align-items: center; min-height: 88rpx; border-bottom: 1rpx solid #eef0f4; }
 .form-label { flex: 0 0 132rpx; color: #374151; font-size: 25rpx; }
-.picker-value { color: #374151; font-size: 25rpx; }.picker-value.primary { color: #1677ff; font-weight: 600; }.no-slot { display:block;padding:20rpx 0;color:#9ca3af;font-size:24rpx; }
+.picker-value { color: #374151; font-size: 25rpx; }.picker-value.primary { color: #1677ff; font-weight: 600; }.no-slot { display:block;padding:20rpx 0;color:#9ca3af;font-size:24rpx; }.date-section{padding:18rpx 0;border-bottom:1rpx solid #eef0f4}.date-scroll{width:100%;margin-top:14rpx;white-space:nowrap}.date-list{display:flex;gap:12rpx;padding-bottom:4rpx}.date-option{display:flex;flex:0 0 118rpx;min-height:120rpx;flex-direction:column;align-items:center;justify-content:center;gap:6rpx;border:1rpx solid #dbe3ee;border-radius:6rpx;color:#475569;font-size:22rpx}.date-option.selected{border-color:#1677ff;background:#eef6ff;color:#1677ff;font-weight:600}.date-option.disabled{border-color:#edf0f3;background:#f8fafc;color:#a7b1bd}.date-status{font-size:19rpx}.date-option.disabled .date-status{color:#ef4444}.date-hint{display:block;margin-top:12rpx;color:#94a3b8;font-size:21rpx}.date-hint.error{color:#ef4444}
 .time-section { padding: 18rpx 0; border-bottom: 1rpx solid #eef0f4; }
 .time-section-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14rpx; }
 .time-section-tip { color:#94a3b8; font-size:21rpx; }

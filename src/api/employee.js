@@ -4,6 +4,7 @@ import { getToken } from '../utils/user-session'
 
 export const getEmployeeWorkbench = () => request({ url: '/employee/workbench', method: 'GET' })
 export const getRentalTasks = () => request({ url: '/employee/rental-tasks', method: 'GET' })
+export const getEmployeeExtraFeeCategories = () => request({ url: '/employee/extra-fee-categories', method: 'GET' })
 export const claimRental = (id) => request({ url: `/employee/rental-orders/${id}/claim`, method: 'POST' })
 export const submitRentalInspection = (id, data) => request({ url: `/employee/rental-orders/${id}/inspection`, method: 'POST', data })
 export const getServiceTasks = () => request({ url: '/employee/service-tasks', method: 'GET' })
