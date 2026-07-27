@@ -3,7 +3,7 @@
     <view v-if="loading" class="empty-state">订单读取中</view>
     <block v-else-if="order">
       <view class="status-card"><text class="status-label">服务状态</text><text class="status-value">{{ order.status_text }}</text><text class="status-no">{{ order.order_no }}</text></view>
-      <view v-if="order.price_confirmation_status==='pending'" class="section quote-section"><text class="section-title">门店报价待确认</text><view class="info-row"><text>本次报价</text><text class="quote-amount">¥{{ order.quoted_amount }}</text></view><view v-if="order.price_adjust_reason" class="quote-reason">{{ order.price_adjust_reason }}</view><text class="section-note">确认后将按该金额支付；如已有付款，系统会自动按差额进入补款流程。</text><view class="quote-actions"><button class="confirm-quote" :loading="confirming" @click="confirmQuote">确认并去支付</button><button class="reject-quote" @click="rejectQuote">拒绝报价</button></view></view>
+      <view v-if="order.price_confirmation_status==='pending'" class="section quote-section"><text class="section-title">门店报价待确认</text><view class="info-row"><text>本次报价</text><text class="quote-amount">¥{{ order.quoted_amount }}</text></view><view v-if="order.price_adjust_reason" class="quote-reason">{{ order.price_adjust_reason }}</view><view v-if="quotePricing" class="quote-marketing"><picker :range="couponLabels" @change="changeQuoteCoupon"><view class="info-row"><text>优惠券</text><text>{{ couponLabels[selectedCouponIndex] }} ›</text></view></picker><view class="info-row"><text>积分抵扣</text><input v-model="quotePoints" type="number" :placeholder="`最多 ${quotePricing.points_max_use || 0} 积分`" @blur="refreshQuotePricing"/></view><view v-if="Number(quotePricing.discount_amount)>0" class="info-row discount"><text>优惠合计</text><text>-¥{{ quotePricing.discount_amount }}</text></view><view class="info-row total"><text>确认后应付</text><text>¥{{ quotePricing.payable_amount }}</text></view></view><text class="section-note">确认后将锁定优惠并按确认金额支付；如已有付款，系统会自动按差额进入补款流程。</text><view class="quote-actions"><button class="confirm-quote" :loading="confirming" @click="confirmQuote">确认并去支付</button><button class="reject-quote" @click="rejectQuote">拒绝报价</button></view></view>
       <view v-if="order.price_adjustments?.length" class="section"><text class="section-title">报价记录</text><view v-for="record in order.price_adjustments" :key="record.created_at" class="record-card"><view class="record-head"><text>¥{{ record.quoted_amount }}</text><text class="record-status">{{ record.status_text }}</text></view><text class="record-time">报价时间：{{ record.created_at }}</text><text v-if="record.adjustment_reason" class="record-note">{{ record.adjustment_reason }}</text></view></view>
       <view class="section">
         <text class="section-title">预约信息</text>
@@ -46,7 +46,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { cancelServiceOrder, confirmServiceQuote, getServiceOrder, getServiceVerificationCode } from '../../api/service'
+import { cancelServiceOrder, confirmServiceQuote, getServiceOrder, getServiceQuotePricing, getServiceVerificationCode } from '../../api/service'
 import { appealOrderReview, hideOrderReview } from '../../api/review'
 
 const order = ref(null)
@@ -65,12 +65,18 @@ const canReschedule = computed(() => rescheduleEligible.value && !rescheduleCuto
 const canShowCode = computed(() => order.value?.payment_status === 'paid' && ['pending', 'confirmed'].includes(order.value?.status))
 const verification = ref({ visible: false, url: '', expiresAt: '', orderNo: '' })
 const confirming = ref(false)
+const quotePricing = ref(null)
+const selectedCouponId = ref(0)
+const selectedCouponIndex = ref(0)
+const quotePoints = ref('')
+const couponLabels = computed(() => ['暂不使用优惠券', ...((quotePricing.value?.coupon_options || []).map(item => `${item.coupon_name} -¥${item.discount_amount}`))])
 const paymentStatusText = computed(() => ({ unpaid: '待支付', partial_paid: '待补款', paid: '已支付', refund_pending: '退款处理中', partial_refunded: '部分退款', refunded: '已退款' }[order.value?.payment_status] || '待支付'))
 
 const loadOrder = async () => {
   try {
     const result = await getServiceOrder(orderId.value)
     order.value = result.data?.order || null
+    if (order.value?.price_confirmation_status === 'pending') await refreshQuotePricing()
   } catch (error) {
     uni.showToast({ title: error.msg || '订单读取失败', icon: 'none' })
   } finally {
@@ -94,7 +100,20 @@ const cancelOrder = () => {
     }
   })
 }
-const confirmQuote = async () => { if (confirming.value) return; confirming.value=true; try { const result=await confirmServiceQuote(orderId.value); uni.showToast({title:result.msg||'价格已确认',icon:'success'}); await loadOrder(); if (order.value?.status === 'pending_payment') setTimeout(payOrder, 450) } catch (error) { uni.showToast({title:error.msg||'确认失败',icon:'none'}) } finally { confirming.value=false } }
+const refreshQuotePricing = async () => {
+  if (!orderId.value) return
+  try {
+    const result = await getServiceQuotePricing(orderId.value, { user_coupon_id: selectedCouponId.value, points_to_use: Number(quotePoints.value || 0) })
+    quotePricing.value = result.data || null
+    quotePoints.value = String(quotePricing.value?.points_to_use || '')
+  } catch (error) { uni.showToast({ title: error.msg || '优惠信息读取失败', icon: 'none' }) }
+}
+const changeQuoteCoupon = async ({ detail }) => {
+  selectedCouponIndex.value = Number(detail.value || 0)
+  selectedCouponId.value = selectedCouponIndex.value > 0 ? Number(quotePricing.value?.coupon_options?.[selectedCouponIndex.value - 1]?.user_coupon_id || 0) : 0
+  await refreshQuotePricing()
+}
+const confirmQuote = async () => { if (confirming.value) return; confirming.value=true; try { const result=await confirmServiceQuote(orderId.value, { user_coupon_id: selectedCouponId.value, points_to_use: Number(quotePoints.value || 0) }); uni.showToast({title:result.msg||'价格已确认',icon:'success'}); await loadOrder(); if (order.value?.status === 'pending_payment') setTimeout(payOrder, 450) } catch (error) { uni.showToast({title:error.msg||'确认失败',icon:'none'}) } finally { confirming.value=false } }
 const rejectQuote = () => uni.showModal({ title: '拒绝报价', editable: true, placeholderText: '可填写原因，门店会收到通知', content: '报价不符合预期，是否取消本次预约？', success: async ({ confirm, content }) => { if (!confirm) return; try { const result = await cancelServiceOrder(orderId.value, content || '用户拒绝现场报价'); uni.showToast({ title: result.msg || '已取消预约', icon: 'none' }); await loadOrder() } catch (error) { uni.showToast({ title: error.msg || '取消失败', icon: 'none' }) } } })
 const writeReview = () => uni.navigateTo({ url: `/pages/order/review?type=service&id=${orderId.value}` })
 const payOrder = () => uni.navigateTo({ url: `/pages/order/service-payment?id=${orderId.value}` })

@@ -36,7 +36,8 @@ export const payServiceOrder = (id, platform = 'wechat') => request({
   data: { platform }
 })
 
-export const confirmServiceQuote = (id) => request({ url: `/services/orders/${id}/confirm-quote`, method: 'POST' })
+export const getServiceQuotePricing = (id, data = {}) => request({ url: `/services/orders/${id}/quote-pricing`, method: 'GET', data })
+export const confirmServiceQuote = (id, data = {}) => request({ url: `/services/orders/${id}/confirm-quote`, method: 'POST', data })
 
 export const rescheduleServiceOrder = (id, data) => request({
   url: `/services/orders/${id}/reschedule`,

@@ -6,7 +6,12 @@
       <text class="title">欢迎来到 Hax租车</text>
       <text class="subtitle">登录后即可预订车辆和管理行程</text>
 
+      <!-- #ifdef MP-WEIXIN -->
       <button class="login-button" :loading="loading" @click="handleLogin">微信一键登录</button>
+      <!-- #endif -->
+      <!-- #ifdef MP-TOUTIAO -->
+      <button class="login-button" @click="showDouyinPlaceholder">抖音登录（即将开放）</button>
+      <!-- #endif -->
       <text class="agreement">登录即表示同意《用户协议》和《隐私政策》</text>
     </view>
   </view>
@@ -52,6 +57,10 @@ const handleLogin = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const showDouyinPlaceholder = () => {
+  uni.showModal({ title: '抖音登录', content: '抖音小程序账号和支付能力完成申请后开放。', showCancel: false })
 }
 
 const goBack = () => {
