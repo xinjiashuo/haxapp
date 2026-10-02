@@ -106,6 +106,7 @@ onLoad((query) => {
   type.value = query.type === 'return' ? 'return' : 'pickup'
   name.value = decodeURIComponent(query.name || '')
   plate.value = decodeURIComponent(query.plate || '')
+  if (type.value === 'pickup') form.value.energy_level = '100'
   if (type.value === 'return') loadFeeCategories()
 })
 
